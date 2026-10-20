@@ -1,37 +1,63 @@
 <!DOCTYPE html><html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SafeGrow - AI 주식 앱</title>
-  <style>
-    * { box-sizing: border-box; }
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SafeGrow - AI 주식 앱</title>  <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
       background: #f2f6f3;
       color: #183328;
     }
+
     header {
       background: #174b35;
       color: white;
       padding: 24px 20px;
     }
-    header h1 { margin: 0 0 8px; }
-    header p { margin: 0; color: #d8eee0; }
-    main { max-width: 600px; margin: auto; padding: 18px; }
-    .notice, .card {
+
+    header h1 {
+      margin: 0 0 8px;
+    }
+
+    header p {
+      margin: 0;
+      color: #d8eee0;
+    }
+
+    main {
+      max-width: 600px;
+      margin: auto;
+      padding: 18px;
+    }
+
+    .notice,
+    .card {
       padding: 18px;
       margin-bottom: 16px;
       border-radius: 14px;
       background: white;
     }
+
     .notice {
       background: #fff3d3;
       line-height: 1.6;
       font-size: 14px;
     }
-    .card { box-shadow: 0 2px 8px #0000000a; }
-    .card h2 { font-size: 18px; margin-top: 0; }
+
+    .card {
+      box-shadow: 0 2px 8px #0000000a;
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+
     .item {
       display: flex;
       justify-content: space-between;
@@ -39,10 +65,43 @@
       padding: 13px 0;
       border-bottom: 1px solid #e8eee9;
     }
-    .item:last-child { border-bottom: 0; }
-    .muted { color: #6b7770; }
-    .status { color: #197447; font-weight: bold; }
-    button {
+
+    .item:last-child {
+      border-bottom: 0;
+    }
+
+    .muted {
+      color: #6b7770;
+    }
+
+    .status {
+      color: #197447;
+      font-weight: bold;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 8px;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid #ccd7d0;
+      border-radius: 9px;
+      font-size: 16px;
+    }
+
+    .search-button {
+      width: 90px;
+      border: 0;
+      border-radius: 9px;
+      background: #174b35;
+      color: white;
+      font-weight: bold;
+    }
+
+    .disabled-button {
       width: 100%;
       padding: 13px;
       border: 0;
@@ -51,33 +110,95 @@
       color: #47534c;
       font-weight: bold;
     }
+
+    #result {
+      display: none;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #e8eee9;
+    }
+
+    #message {
+      margin-top: 14px;
+      color: #6b7770;
+      font-size: 14px;
+    }
+
     footer {
       text-align: center;
       padding: 20px;
       font-size: 12px;
       color: #68766d;
     }
-  </style>
-</head>
-<body>
-  <header>
+  </style></head><body>  <header>
     <h1>🌱 SafeGrow</h1>
     <p>초보자를 위한 AI 주식 분석 도구</p>
-  </header>  <main>
-    <div class="notice">
-      <strong>🔒 안전 모드</strong><br>
-      현재는 첫 화면 테스트 단계입니다.
-      실제 계좌 연결 및 주식 주문은 비활성화되어 있습니다.
-    </div><section class="card">
+  </header>  <main><div class="notice">
+  <strong>🔒 안전 모드</strong><br>
+  현재는 기능 테스트 단계입니다.
+  아래 주식 가격은 실제 시세가 아닌 테스트용 가상 데이터입니다.
+  실제 계좌 연결과 실제 주문은 비활성화되어 있습니다.
+</div>
+
+<section class="card">
+  <h2>🔎 종목 검색</h2>
+
+  <div class="search-box">
+    <input
+      id="stockInput"
+      type="text"
+      placeholder="예: 삼성전자"
+    >
+
+    <button
+      class="search-button"
+      type="button"
+      onclick="searchStock()"
+    >
+      검색
+    </button>
+  </div>
+
+  <div id="message">
+    삼성전자, SK하이닉스 또는 NAVER를 검색해 보세요.
+  </div>
+
+  <div id="result">
+    <div class="item">
+      <span class="muted">종목명</span>
+      <strong id="stockName"></strong>
+    </div>
+
+    <div class="item">
+      <span class="muted">종목코드</span>
+      <strong id="stockCode"></strong>
+    </div>
+
+    <div class="item">
+      <span class="muted">테스트 가격</span>
+      <strong id="stockPrice"></strong>
+    </div>
+
+    <div class="item">
+      <span class="muted">테스트 등락률</span>
+      <strong id="stockChange"></strong>
+    </div>
+  </div>
+</section>
+
+<section class="card">
   <h2>💰 내 투자 현황</h2>
+
   <div class="item">
     <span class="muted">시작 투자금</span>
     <strong>500,000원</strong>
   </div>
+
   <div class="item">
     <span class="muted">현재 평가금액</span>
     <strong>조회 전</strong>
   </div>
+
   <div class="item">
     <span class="muted">오늘 손익</span>
     <strong>계산 전</strong>
@@ -86,22 +207,77 @@
 
 <section class="card">
   <h2>🤖 자동매매 상태</h2>
-  <p class="status">● 모의매매 준비 중</p>
-  <p class="muted">아직 시세 API에 연결되지 않았습니다.</p>
-  <button type="button" disabled>실제 주문 기능 · 비활성화</button>
-</section>
 
-<section class="card">
-  <h2>📋 개발 진행 상황</h2>
-  <div class="item"><span>시세 조회</span><span>대기</span></div>
-  <div class="item"><span>매매 규칙</span><span>대기</span></div>
-  <div class="item"><span>모의매매</span><span>대기</span></div>
-  <div class="item"><span>위험관리 테스트</span><span>대기</span></div>
+  <p class="status">● 모의매매 준비 중</p>
+
+  <p class="muted">
+    실제 증권사 계좌에는 연결되어 있지 않습니다.
+  </p>
+
+  <button
+    class="disabled-button"
+    type="button"
+    disabled
+  >
+    실제 주문 기능 · 비활성화
+  </button>
 </section>
 
   </main>  <footer>
     SafeGrow · 학습 및 테스트용<br>
     주식 투자에는 원금 손실 위험이 있습니다.
-  </footer>
-</body>
+  </footer>  <script>
+    const testStocks = {
+      "삼성전자": {
+        code: "005930",
+        price: "70,000원",
+        change: "+1.20%"
+      },
+
+      "SK하이닉스": {
+        code: "000660",
+        price: "180,000원",
+        change: "+0.80%"
+      },
+
+      "NAVER": {
+        code: "035420",
+        price: "210,000원",
+        change: "-0.50%"
+      }
+    };
+
+    function searchStock() {
+      const input = document
+        .getElementById("stockInput")
+        .value
+        .trim();
+
+      const result = document.getElementById("result");
+      const message = document.getElementById("message");
+      const stock = testStocks[input];
+
+      if (stock) {
+        document.getElementById("stockName").textContent = input;
+        document.getElementById("stockCode").textContent = stock.code;
+        document.getElementById("stockPrice").textContent = stock.price;
+        document.getElementById("stockChange").textContent = stock.change;
+
+        result.style.display = "block";
+        message.textContent = "테스트 데이터를 불러왔습니다.";
+      } else {
+        result.style.display = "none";
+        message.textContent =
+          "현재 테스트 가능한 종목은 삼성전자, SK하이닉스, NAVER입니다.";
+      }
+    }
+
+    document
+      .getElementById("stockInput")
+      .addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
+          searchStock();
+        }
+      });
+  </script></body>
 </html>
