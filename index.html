@@ -135,9 +135,9 @@
     <p>초보자를 위한 AI 주식 분석 도구</p>
   </header>  <main><div class="notice">
   <strong>🔒 안전 모드</strong><br>
-  현재는 기능 테스트 단계입니다.
-  아래 주식 가격은 실제 시세가 아닌 테스트용 가상 데이터입니다.
-  실제 계좌 연결과 실제 주문은 비활성화되어 있습니다.
+  검색할 때 현재가를 조회합니다. 자동으로 갱신되지 않으며,
+  시세 기준 시각은 제공되지 않습니다.
+  계좌 정보는 조회하지 않으며 실제 주문은 비활성화되어 있습니다.
 </div>
 
 <section class="card">
@@ -159,7 +159,7 @@
     </button>
   </div>
 
-  <div id="message">
+  <div id="message" role="status" aria-live="polite">
     삼성전자, SK하이닉스 또는 NAVER를 검색해 보세요.
   </div>
 
@@ -175,12 +175,17 @@
     </div>
 
     <div class="item">
-      <span class="muted">테스트 가격</span>
+      <span class="muted">현재가</span>
       <strong id="stockPrice"></strong>
     </div>
 
     <div class="item">
-      <span class="muted">테스트 등락률</span>
+      <span class="muted">전일 대비 등락액</span>
+      <strong id="stockChangeAmount"></strong>
+    </div>
+
+    <div class="item">
+      <span class="muted">전일 대비 등락률</span>
       <strong id="stockChange"></strong>
     </div>
   </div>
@@ -188,20 +193,21 @@
 
 <section class="card">
   <h2>💰 내 투자 현황</h2>
+  <p class="muted">계좌 정보 미연동 · 실제 잔고나 손익을 조회하지 않습니다.</p>
 
   <div class="item">
     <span class="muted">시작 투자금</span>
-    <strong>500,000원</strong>
+    <strong>미설정</strong>
   </div>
 
   <div class="item">
     <span class="muted">현재 평가금액</span>
-    <strong>조회 전</strong>
+    <strong>미조회</strong>
   </div>
 
   <div class="item">
     <span class="muted">오늘 손익</span>
-    <strong>계산 전</strong>
+    <strong>미조회</strong>
   </div>
 </section>
 
@@ -211,7 +217,7 @@
   <p class="status">● 모의매매 준비 중</p>
 
   <p class="muted">
-    실제 증권사 계좌에는 연결되어 있지 않습니다.
+    시세 조회만 지원합니다. 계좌 조회와 주문은 지원하지 않습니다.
   </p>
 
   <button
@@ -227,57 +233,125 @@
     SafeGrow · 학습 및 테스트용<br>
     주식 투자에는 원금 손실 위험이 있습니다.
   </footer>  <script>
-    const testStocks = {
-      "삼성전자": {
-        code: "005930",
-        price: "70,000원",
-        change: "+1.20%"
-      },
+    const stockCodes = new Map([
+      ["삼성전자", "005930"],
+      ["SK하이닉스", "000660"],
+      ["NAVER", "035420"]
+    ]);
+    const PRICE_URL = "https://safegrow-api.zzaho0827.workers.dev/price";
+    const REQUEST_TIMEOUT_MS = 10000;
+    const numberFormat = new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: 10
+    });
+    const result = document.getElementById("result");
+    const message = document.getElementById("message");
+    const resultFields = [
+      "stockName", "stockCode", "stockPrice", "stockChangeAmount", "stockChange"
+    ];
+    let latestRequest = 0;
+    let activeController = null;
 
-      "SK하이닉스": {
-        code: "000660",
-        price: "180,000원",
-        change: "+0.80%"
-      },
-
-      "NAVER": {
-        code: "035420",
-        price: "210,000원",
-        change: "-0.50%"
-      }
-    };
-
-    function searchStock() {
-      const input = document
-        .getElementById("stockInput")
-        .value
-        .trim();
-
-      const result = document.getElementById("result");
-      const message = document.getElementById("message");
-      const stock = testStocks[input];
-
-      if (stock) {
-        document.getElementById("stockName").textContent = input;
-        document.getElementById("stockCode").textContent = stock.code;
-        document.getElementById("stockPrice").textContent = stock.price;
-        document.getElementById("stockChange").textContent = stock.change;
-
-        result.style.display = "block";
-        message.textContent = "테스트 데이터를 불러왔습니다.";
-      } else {
-        result.style.display = "none";
-        message.textContent =
-          "현재 테스트 가능한 종목은 삼성전자, SK하이닉스, NAVER입니다.";
+    function clearResult() {
+      result.style.display = "none";
+      for (const id of resultFields) {
+        document.getElementById(id).textContent = "";
       }
     }
 
-    document
-      .getElementById("stockInput")
-      .addEventListener("keydown", function(event) {
-        if (event.key === "Enter") {
-          searchStock();
+    function parseQuoteNumber(value) {
+      // Accept decimal strings only; reject empty, partial, hexadecimal and infinite values.
+      if (typeof value !== "string" ||
+          !/^[+-]?\d+(?:\.\d+)?$/.test(value.trim())) {
+        throw new Error("Invalid quote");
+      }
+      const number = Number(value.trim());
+      if (!Number.isFinite(number) || Math.abs(number) > Number.MAX_SAFE_INTEGER) {
+        throw new Error("Invalid quote");
+      }
+      return number === 0 ? 0 : number;
+    }
+
+    function signedNumber(value) {
+      return (value > 0 ? "+" : "") + numberFormat.format(value);
+    }
+
+    async function searchStock() {
+      // Invalidate before aborting, so any previous catch/finally cannot change this search.
+      const requestId = ++latestRequest;
+      if (activeController) activeController.abort();
+      activeController = null;
+      clearResult();
+      result.setAttribute("aria-busy", "false");
+
+      const name = document.getElementById("stockInput").value.trim();
+      const code = stockCodes.get(name);
+      if (!code) {
+        message.textContent = "삼성전자, SK하이닉스 또는 NAVER를 입력해 주세요.";
+        return;
+      }
+
+      const controller = new AbortController();
+      activeController = controller;
+      message.textContent = "현재가를 조회하고 있습니다.";
+      result.setAttribute("aria-busy", "true");
+      let timedOut = false;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+        // Expire even if the transport has not yet settled.
+        if (requestId === latestRequest) {
+          clearResult();
+          result.setAttribute("aria-busy", "false");
+          message.textContent = "현재가 조회 시간이 초과되었습니다. 잠시 후 다시 검색해 주세요.";
         }
-      });
+      }, REQUEST_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(PRICE_URL + "?code=" + encodeURIComponent(code), {
+          method: "GET",
+          credentials: "omit",
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error("Quote request failed");
+        const data = await response.json();
+        if (!data || data.ok !== true || data.code !== code) {
+          throw new Error("Invalid quote");
+        }
+        const price = parseQuoteNumber(data.price);
+        const change = parseQuoteNumber(data.change);
+        const changeRate = parseQuoteNumber(data.changeRate);
+        if (price <= 0) throw new Error("Invalid quote");
+
+        if (requestId !== latestRequest || controller.signal.aborted) return;
+        document.getElementById("stockName").textContent = name;
+        document.getElementById("stockCode").textContent = code;
+        document.getElementById("stockPrice").textContent = numberFormat.format(price) + "원";
+        document.getElementById("stockChangeAmount").textContent = signedNumber(change) + "원";
+        document.getElementById("stockChange").textContent = signedNumber(changeRate) + "%";
+        result.style.display = "block";
+        message.textContent = "현재가 조회를 완료했습니다. 자동 갱신되지 않으며 시세 기준 시각은 제공되지 않습니다.";
+      } catch {
+        if (requestId !== latestRequest) return;
+        clearResult();
+        // Never display or log the API body, error details, or credentials.
+        message.textContent = timedOut
+          ? "현재가 조회 시간이 초과되었습니다. 잠시 후 다시 검색해 주세요."
+          : "현재가를 조회하지 못했습니다. 잠시 후 다시 검색해 주세요.";
+      } finally {
+        clearTimeout(timeoutId);
+        if (requestId === latestRequest) {
+          activeController = null;
+          result.setAttribute("aria-busy", "false");
+        }
+      }
+    }
+
+    document.getElementById("stockInput").addEventListener("keydown", function(event) {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        searchStock();
+      }
+    });
   </script></body>
 </html>
+
